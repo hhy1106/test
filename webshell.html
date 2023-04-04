@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>webshell测试</title>
+    <!--link rel="stylesheet" href="node_modules/xterm/css/xterm.css" />
+    <script src="node_modules/xterm/lib/xterm.js"></script-->
+    <link rel="stylesheet" href="node_modules/xterm-addon-fit/xterm.css" />
+    <script src="node_modules/xterm-addon-fit/xterm.js"></script>
+    <script src="node_modules/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
+    <style>
+        html, body{
+            margin:0;
+            padding:0;
+            width: 100%;
+            height: 100%;
+        }
+        .header{
+            width: 100%;
+            background: #003580;
+            height: 50px;
+            line-height: 50px;
+        }
+        .header a{
+            text-decoration: none;
+            /*pointer-events: none;*/
+        }
+        .header span{
+            color: white;
+            line-height: 50px;
+        }
+        .header input{
+            width: 100px;
+            border: 0;
+            margin: 0 0 0 5px;
+            padding: 0;
+            line-height: 30px;
+        }
+        .subnav{
+            display: inline-block;
+            background: #0071ce;
+            width: 100px;
+            height: 50px;
+            text-align: center;
+            line-height: 50px;
+            color: #ffffff;
+        }
+        .subnav:last-child{
+            float: right;
+        }
+        input:focus{
+            outline:none;
+        }
+        #terminal{
+            width: 100%;
+            height: calc(100% - 50px);
+        }
+    </style>
+</head>
+<body>
+    <div class="header" style="z-index: 999;">
+        <span>地址:<input id="ip" value='154.209.4.233'></span>
+        <span>端口:<input id="port" value='22'></span>
+        <span>用户:<input id="user" value='root'></span>
+        <span>密码:<input id="password" type="password" value='drXAnSVzaY@21cn'></span>
+
+        <a id="connect" class="subnav" style="float: right">
+            <span>连接</span>
+        </a>
+        <a id="disconnect" class="subnav" style="float: right">
+            <span>关闭连接</span>
+        </a>
+        <a id="clear" class="subnav">
+            <span>清理终端</span>
+        </a>
+    </div>
+    <div id="terminal"></div>
+    <script>
+        isWork = false;
+        isConnect = false;
+        isSshConnect = false;
+        addr = "";
+        port = "";
+        user = "";
+        password = "";
+        xtermcols = 120;
+        xtermrows = 50;
+        xfontSize = 9.5;
+        yfontSize = 17;
+        ws = false;
+        term = false;
+        function w_h() {
+            //页面宽高
+            wid = window.innerWidth;
+            hei = window.innerHeight - 50;
+            xtermcols = parseInt(wid / xfontSize);
+            xtermrows = parseInt(hei / yfontSize);
+            if (xtermcols < 30){
+                xtermcols = 30;
+            }
+            if (xtermrows < 20){
+                xtermrows = 20;
+            }
+            //alert(wid + "--" + hei);
+            //alert(xtermcols + "--" + xtermrows);
+            console.log(xtermcols + "--" + xtermrows)
+        }
+        w_h();
+        function initTerm() {
+            term = new Terminal({
+                cols: xtermcols,
+                rows: xtermrows,
+                cursorBlink: true, // 关标闪烁
+                cursorStyle: "underline", // 光标样式 'block' | 'underline' | 'bar'
+                scrollback: 100, // 当行的滚动超过初始值时保留的行视窗，越大回滚能看的内容越多
+            });
+            //fitAddon = new FitAddon();
+            //term.loadAddon(fitAddon);
+            term.open(document.getElementById('terminal'));
+            //fitAddon.fit();
+            //term.fit()
+            term.focus();
+            term.onData(data =>  {
+                if(ws) {
+                    curData = {
+                        "type": "data",
+                        "data": data
+                    }
+                    ws.send(JSON.stringify(curData));
+                }
+            });
+            term.scrollToBottom();
+        }
+        function webconnect(){
+            if(isConnect) {
+                initTerm();
+                data = {
+                    "type": "create",
+                    "data": {
+                        "ip": addr,
+                        "port": parseInt(port),
+                        "user": user,
+                        "pwd": password,
+                        "width": xtermcols,//w.offsetWidth,
+                        "height": xtermrows,//w.offsetHeight
+                    }
+                };
+                ws.send(JSON.stringify(data));
+            } else {
+                try{
+                    //ws = new WebSocket("wss://127.0.0.1:9501");
+                    initTerm();
+                    ws = new WebSocket("ws://127.0.0.1:8000/webssh");
+                    webopen();
+                    webMessage();
+                }catch(ev){
+                    isWork = false;
+                    alert("websocket连接异常!");
+                }
+            }
+        }
+        function webopen(){
+            ws.onopen = function (ev) { //若是连接成功，onopen函数会执行
+                isConnect = true;
+                w = document.getElementById('terminal');
+                data = {
+                    "type": "create",
+                    "data": {
+                        "ip": addr,
+                        "port": parseInt(port),
+                        "user": user,
+                        "pwd": password,
+                        "width": xtermcols,//w.offsetWidth,
+                        "height": xtermrows//parseInt(w.offsetHeight * 2 / 3)
+                    }
+                };
+                ws.send(JSON.stringify(data));
+            }
+            ws.onclose = function (ev) {
+                isConnect = false;
+                isSshConnect = false;
+                isWork = false;
+                term.dispose();
+                term = false;
+                alert("websocket连接中断!")
+                ws = false;
+            }
+        }
+        function webMessage(){
+            ws.onmessage = function (ev) {
+                d = JSON.parse(ev.data);
+                if(d["type"] == "create"){
+                    isWork = false;
+                    isSshConnect = true;
+                    cmdList = [];
+                    cmdIdx = 0;
+                    term.clear();
+                } else if(d["type"] == "data"){
+                    isWork = false;
+                    term.write(d["data"])
+                }else if(d["type"] == "close"){
+                    isWork = false;
+                    isSshConnect = false;
+                    term.dispose();
+                    term = false;
+                }
+            }
+        }
+        // document.getElementById("connect").setAttribute("pointer-events", "auto");
+        document.getElementById("connect").addEventListener("click", function(){
+            if(isWork){
+            } else if(isSshConnect){
+                alert("已连接！")
+            } else {
+                isWork = true;
+                addr = document.getElementById("ip").value;
+                port = document.getElementById("port").value;
+                user = document.getElementById("user").value;
+                password = document.getElementById("password").value;
+                webconnect();
+            }
+        });
+        document.getElementById("disconnect").addEventListener("click", function(){
+            if(isWork){
+            } else if(isSshConnect){
+                isWork = true;
+                data = {
+                    "type": "close",
+                    "data": "close"
+                };
+                ws.send(JSON.stringify(data));
+            } else {
+                alert("未连接!");
+            }
+        });
+        document.getElementById("clear").addEventListener("click", function(){
+            if(isWork){
+            } else if(isSshConnect){
+                data = {
+                    "type": "data",
+                    "data": "clear\n"
+                }
+                ws.send(JSON.stringify(data));
+            } else {
+                alert("未连接!");
+            }
+        });
+        window.onresize = function () {
+            w_h();
+            if (term) {
+                term.resize(xtermcols, xtermrows);
+            }
+            //if(isSshConnect){
+            //    data = {
+            //        "type": "resize",
+            //        "data": {
+            //            "x": xtermcols,
+            //            "y": xtermrows,
+            //        }
+            //    }
+            //    ws.send(JSON.stringify(data));
+            //}
+        }
+    </script>
+</body>
+</html>
